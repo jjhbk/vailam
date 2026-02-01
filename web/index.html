@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>VeilAI</title>
+    <meta charset="utf-8" />
+  </head>
+  <body>
+    <h2>🔒 VeilAI — Confidential Chat</h2>
+    <textarea
+      id="prompt"
+      rows="4"
+      cols="60"
+      placeholder="Type your message..."
+    ></textarea
+    ><br /><br />
+    <button onclick="send()">Send Securely</button>
+    <pre id="out"></pre>
+
+    <script>
+      const enc = new TextEncoder();
+      const dec = new TextDecoder();
+
+      function hex(buf) {
+        return Array.from(buf)
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+      }
+      function unhex(hexstr) {
+        return new Uint8Array(
+          hexstr.match(/.{2}/g).map((h) => parseInt(h, 16))
+        );
+      }
+
+      async function send() {
+        document.getElementById("out").textContent = "Encrypting...";
+
+        // 1. Get enclave public key
+        const spk = new Uint8Array(
+          await (await fetch("http://localhost:5000/pubkey")).arrayBuffer()
+        );
+
+        // 2. Generate browser ECDH key
+        const clientKey = await crypto.subtle.generateKey(
+          { name: "ECDH", namedCurve: "P-256" },
+          true,
+          ["deriveBits"]
+        );
+
+        const serverKey = await crypto.subtle.importKey(
+          "raw",
+          spk,
+          { name: "ECDH", namedCurve: "P-256" },
+          false,
+          []
+        );
+
+        const shared = await crypto.subtle.deriveBits(
+          { name: "ECDH", public: serverKey },
+          clientKey.privateKey,
+          256
+        );
+
+        const aesKey = await crypto.subtle.importKey(
+          "raw",
+          shared,
+          { name: "AES-GCM" },
+          false,
+          ["encrypt", "decrypt"]
+        );
+
+        const nonce = crypto.getRandomValues(new Uint8Array(12));
+        const ct = await crypto.subtle.encrypt(
+          { name: "AES-GCM", iv: nonce },
+          aesKey,
+          enc.encode(document.getElementById("prompt").value)
+        );
+
+        // 3. Send encrypted payload
+        const resp = await fetch("http://localhost:5000/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client_pub: hex(
+              new Uint8Array(
+                await crypto.subtle.exportKey("raw", clientKey.publicKey)
+              )
+            ),
+            nonce: hex(nonce),
+            ciphertext: hex(new Uint8Array(ct)),
+          }),
+        });
+
+        const data = await resp.json();
+
+        // 4. Decrypt response
+        const pt = await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: nonce },
+          aesKey,
+          unhex(data.ciphertext)
+        );
+
+        document.getElementById("out").textContent = dec.decode(pt);
+      }
+    </script>
+  </body>
+</html>

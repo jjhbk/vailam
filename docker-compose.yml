@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+  secure-llm:
+    build: ./enclave
+    ports:
+      - "5000:5000"
+    networks:
+      - vailam
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - model-data:/data
+
+
+networks:
+  vailam:
+    driver: bridge
+
+volumes:
+  model-data:
