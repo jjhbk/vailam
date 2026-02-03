@@ -32,7 +32,7 @@ server_key = ec.generate_private_key(ec.SECP256R1())
 # --------------------
 # GLOBAL LLM
 # --------------------
-MODEL_PATH = os.getenv("MODEL_PATH", "/data/tiny.gguf")
+MODEL_PATH = os.getenv("MODEL_PATH", "../data/mistral.gguf")
 
 if not os.path.exists(MODEL_PATH):
     print("Downloading model...")
@@ -43,7 +43,7 @@ if not os.path.exists(MODEL_PATH):
         f"-O {MODEL_PATH}"
     )
 
-llm = Llama(model_path=MODEL_PATH, n_ctx=2048)
+llm = Llama(model_path=MODEL_PATH, n_ctx=2048, n_threads=16)
 
 
 SYSTEM_PROMPT = "You are a helpful, concise assistant."
@@ -59,6 +59,19 @@ SUMMARY_SYSTEM_PROMPT = (
     "- Include user goals, preferences, constraints, and decisions\n"
     "- Max 120 tokens\n\n"
     "Return ONLY the updated memory."
+)
+
+MCP_SYSTEM_PROMPT = (
+    "You are an MCP agent.\n"
+    "You MUST respond with valid JSON only.\n\n"
+    "If a tool is required, respond with:\n"
+    "{\n"
+    '  "tool": "<tool_name>",\n'
+    '  "arguments": { ... }\n'
+    "}\n\n"
+    "If no tool is needed, respond with:\n"
+    '{ "final": "<your response>" }\n\n'
+    "Do NOT include markdown, comments, or extra text."
 )
 
 
@@ -103,8 +116,9 @@ def chat():
     payload, aes = decrypt_payload(request.json)
 
     prompt = payload["prompt"].strip()
-    context = payload.get("context", {})
     params = payload.get("params", {})
+    mode = params.get("mode", "chat")
+    context = payload.get("context", {})
 
     summary = context.get("summary", "")
     recent = context.get("recent", [])
@@ -115,7 +129,12 @@ def chat():
     temperature = max(0.0, min(temperature, 1.5))
     max_tokens = max(16, min(max_tokens, 512))
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages = [
+        {
+            "role": "system",
+            "content": MCP_SYSTEM_PROMPT if mode == "tool" else SYSTEM_PROMPT,
+        }
+    ]
 
     if summary:
         messages.append(
@@ -134,7 +153,15 @@ def chat():
         max_tokens=max_tokens,
     )
 
-    llm_out = result["choices"][0]["message"]["content"].strip()
+    raw_out = result["choices"][0]["message"]["content"].strip()
+
+    if mode == "tool":
+        try:
+            llm_out = json.dumps(json.loads(raw_out))
+        except Exception:
+            llm_out = json.dumps({"final": raw_out})
+    else:
+        llm_out = raw_out
 
     out_nonce = os.urandom(12)
     out_ct = aes.encrypt(out_nonce, llm_out.encode(), None)
@@ -200,8 +227,13 @@ def chat_stream():
     payload, aes = decrypt_payload(request.json)
 
     prompt = payload["prompt"].strip()
-    context = payload.get("context", {})
     params = payload.get("params", {})
+    mode = params.get("mode", "chat")
+    context = payload.get("context", {})
+
+    # 🚫 MCP/tool mode must NOT use streaming
+    if mode == "tool":
+        return jsonify({"error": "Streaming is not supported in MCP tool mode"}), 400
 
     temperature = float(params.get("temperature", 0.7))
     max_tokens = int(params.get("max_tokens", 128))
@@ -220,7 +252,8 @@ def chat_stream():
         )
 
     for m in context.get("recent", []):
-        messages.append(m)
+        if m["role"] in ("user", "assistant"):
+            messages.append(m)
 
     messages.append({"role": "user", "content": prompt})
 
@@ -250,6 +283,20 @@ def chat_stream():
     return Response(
         stream_with_context(generate()),
         mimetype="application/json",
+    )
+
+
+@app.route("/capabilities", methods=["GET"])
+def capabilities():
+    return jsonify(
+        {
+            "mcp": True,
+            "json_mode": True,
+            "streaming": True,
+            "encryption": "ECDH+AESGCM",
+            "max_context": 2048,
+            "model": "llama.cpp",
+        }
     )
 
 

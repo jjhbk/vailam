@@ -1,0 +1,93 @@
+4/
+Cloud-only inference fixes UX:
+• fast
+• streaming
+• easy updates
+
+But it also relies on trust:
+• plaintext in memory
+• logs & metrics
+• operator access
+
+Again, privacy depends on promises.
+
+5/
+This is where Trusted Execution Environments (TEEs) matter.
+
+The idea is simple:
+
+Decrypt and compute only inside a hardware-isolated boundary.
+
+Not “we won’t look.”
+But “we physically can’t.”
+
+6/
+In a TEE-backed private LLM:
+
+• prompts are encrypted in the browser
+• decryption happens only inside the enclave
+• inference runs in isolated memory
+• outputs are encrypted before leaving
+• no plaintext hits disk or logs
+
+7/
+This changes the trust model completely.
+
+You no longer trust:
+• operators
+• access controls
+• retention policies
+
+You trust:
+• hardware isolation
+• cryptography
+• explicit boundaries
+
+8/
+Why TEEs beat local-only or cloud-only approaches:
+
+Local inference → privacy, poor usability
+Cloud-only inference → usability, weak privacy
+
+TEE-backed inference gives:
+✅ real-time UX
+✅ streaming
+✅ model updates
+✅ strong confidentiality
+
+9/
+This isn’t about perfect crypto or theory.
+
+It’s about deployable privacy:
+• works today
+• scales to real users
+• doesn’t require everyone to own a GPU
+
+That balance is what actually matters.
+
+10/
+This thinking led me to build Vailam — an experiment in confidential AI where:
+• chats are end-to-end encrypted
+• servers are stateless
+• memory lives with the user
+• privacy is enforced by architecture, not policy
+
+11/
+As AI moves into healthcare, law, finance, and personal decision-making,
+“trust us” architectures won’t be enough.
+
+Confidential compute isn’t optional — it’s becoming foundational.
+
+12/
+If you’re working on:
+• private LLMs
+• confidential compute
+• AI infrastructure
+• secure systems
+
+I’d love to connect and exchange notes.
+(And yes — this really did start as a weekend project.)
+
+
+wget https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf "
+     -O {mistral.gguf}

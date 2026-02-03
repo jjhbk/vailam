@@ -1,0 +1,6 @@
+# flyctl launch added from .gitignore
+**/*.env
+model
+enclave/model
+data
+fly.toml
